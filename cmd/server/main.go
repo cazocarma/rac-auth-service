@@ -3,35 +3,49 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
+
+	"github.com/cazocarma/rac-auth-service/internal/config"
+	"github.com/cazocarma/rac-auth-service/internal/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	service := os.Getenv("SERVICE_NAME")
-	if service == "" {
-		service = "unknown-service"
+	// === Cargar configuración ===
+	cfg := config.Load()
+
+	// === Configurar modo Gin ===
+	mode := os.Getenv("GIN_MODE")
+	if mode == "" {
+		gin.SetMode(gin.ReleaseMode) // por defecto en release
+	} else {
+		gin.SetMode(mode)
 	}
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "ok",
-			"service": service,
-		})
-	})
+	// === Seguridad básica ===
+	// No confiar en proxies externos por defecto
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Printf("⚠️ No se configuraron proxies de confianza: %v", err)
+	}
 
-	port := os.Getenv("PORT")
+	// === Configurar rutas ===
+	http.SetupRouter(r, cfg)
+
+	// === Determinar puerto dinámicamente ===
+	port := os.Getenv("SERVICE_PORT")
 	if port == "" {
 		port = "8080"
 	}
-
 	addr := fmt.Sprintf(":%s", port)
-	log.Printf("✅ %s listening on %s", service, addr)
+
+	log.Printf("✅ rac-auth-service iniciado en %s (modo: %s)", addr, gin.Mode())
+
+	// === Iniciar servidor ===
 	if err := r.Run(addr); err != nil {
-		log.Fatalf("❌ %s failed: %v", service, err)
+		log.Fatalf("❌ Error iniciando servidor: %v", err)
 	}
 }
