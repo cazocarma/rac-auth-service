@@ -20,3 +20,6 @@ Ver `.env.example`
 
 ```bash
 go run cmd/server/main.go
+```
+
+Igual no se ejecuta jamás en local porque esto tendría que correr el contenedor de postgres, keycloak, y auth.
