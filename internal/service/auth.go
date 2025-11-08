@@ -69,6 +69,13 @@ func (s *AuthService) Login(c *gin.Context) {
 		return
 	}
 
+	req.Username = strings.TrimSpace(req.Username)
+	req.Password = strings.TrimSpace(req.Password)
+	if req.Username == "" || req.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username/password requeridos"})
+		return
+	}
+
 	form := url.Values{}
 	form.Set("grant_type", "password")
 	form.Set("client_id", s.cfg.ClientID)
