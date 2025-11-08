@@ -1,4 +1,25 @@
-# Rac-auth-service
+# rac-auth-service
 
-Servicio Go basado en Gin para Rent-a-Compa.
-Estructura interna: cmd/, internal/{config,http,domain,repo,service}, migrations/
+Microservicio de autenticación que actúa como **fachada de Keycloak**, centralizando login, refresh, logout y userinfo.
+
+## Endpoints
+
+| Método | Ruta | Descripción |
+|--------|------|--------------|
+| POST | `/api/auth/login` | Login contra Keycloak y genera JWT interno opcional |
+| POST | `/api/auth/refresh` | Refresca token |
+| POST | `/api/auth/logout` | Cierra sesión en Keycloak |
+| GET  | `/api/auth/userinfo` | Retorna datos del usuario autenticado |
+| GET  | `/health` | Health check |
+
+## Variables de entorno
+
+Ver `.env.example`
+
+## Ejecución local
+
+```bash
+go run cmd/server/main.go
+```
+
+Igual no se ejecuta jamás en local porque esto tendría que correr el contenedor de postgres, keycloak, y auth.

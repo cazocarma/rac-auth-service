@@ -1,65 +1,58 @@
+package main
+
 import (
 	"log"
-	"net/http"
 	"os"
 
+	"github.com/cazocarma/rac-auth-service/internal/config"
+	"github.com/cazocarma/rac-auth-service/internal/http"
+
 	"github.com/gin-gonic/gin"
+
+	"time"
+
+	"github.com/gin-contrib/cors"
 )
 
 func main() {
-	r := gin.Default()
+	cfg := config.Load()
 
-	// CORS mínimo
-	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
-
-	// Health
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "service": "rac-auth-service"})
-	})
-
-	// Fachada de Keycloak: endpoints mínimos de ejemplo
-	api := r.Group("/api/auth")
-	{
-		api.POST("/login", Login)
-		api.POST("/logout", Logout)
-		api.POST("/refresh", Refresh)
-		api.GET("/userinfo", UserInfo)
+	// Modo Gin
+	mode := os.Getenv("GIN_MODE")
+	if mode == "" {
+		gin.SetMode(gin.ReleaseMode)
+	} else {
+		gin.SetMode(mode)
 	}
 
-	addr := ":8080"
-	if v := os.Getenv("PORT"); v != "" {
-		addr = ":" + v
+	r := gin.New()
+	r.Use(gin.Logger()) // <— añade logger
+	r.Use(gin.Recovery())
+
+	// CORS (ajusta orígenes según tu frontend)
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost", "http://localhost:80", "http://localhost:8080"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Printf("⚠️ No se configuraron proxies de confianza: %v", err)
 	}
-	log.Printf("auth service listening on %s", addr)
-	_ = r.Run(addr)
-}
 
-// ==== Handlers mínimos (mock) ====
+	http.SetupRouter(r, cfg)
 
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-func Login(c *gin.Context) {
-	var req LoginRequest
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "invalid"})
-		return
+	port := os.Getenv("SERVICE_PORT")
+	if port == "" {
+		port = "8080"
 	}
-	// TODO: intercambiar contra Keycloak (token endpoint)
-	c.JSON(200, gin.H{"access_token": "mock", "refresh_token": "mock"})
-}
+	addr := ":" + port
+	log.Printf("✅ rac-auth-service iniciado en %s (modo: %s)", addr, gin.Mode())
 
-func Logout(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) }
-func Refresh(c *gin.Context) { c.JSON(200, gin.H{"access_token": "mock2"}) }
-func UserInfo(c *gin.Context) { c.JSON(200, gin.H{"sub": "kc-user-id", "roles": []string{"cliente"}}) }
+	if err := r.Run(addr); err != nil {
+		log.Fatalf("❌ Error iniciando servidor: %v", err)
+	}
+}
