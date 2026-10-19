@@ -1,58 +1,41 @@
 package main
 
 import (
-	"log"
-	"os"
-
-	"github.com/cazocarma/rac-auth-service/internal/config"
-	"github.com/cazocarma/rac-auth-service/internal/http"
-
+	"context"
+	"github.com/cazocarma/rac-auth-service/internal/platform"
 	"github.com/gin-gonic/gin"
-
+	"log"
+	"net/http"
+	"os"
 	"time"
-
-	"github.com/gin-contrib/cors"
 )
 
-func main() {
-	cfg := config.Load()
-
-	// Modo Gin
-	mode := os.Getenv("GIN_MODE")
-	if mode == "" {
-		gin.SetMode(gin.ReleaseMode)
-	} else {
-		gin.SetMode(mode)
-	}
-
+func router(security *platform.Security) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Logger()) // <— añade logger
 	r.Use(gin.Recovery())
-
-	// CORS (ajusta orígenes según tu frontend)
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost", "http://localhost:80", "http://localhost:8080"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-
-	if err := r.SetTrustedProxies(nil); err != nil {
-		log.Printf("⚠️ No se configuraron proxies de confianza: %v", err)
-	}
-
-	http.SetupRouter(r, cfg)
-
+	platform.Observe(r, "rac-auth-service")
+	platform.Health(r, nil, func(ctx context.Context) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, os.Getenv("OIDC_JWKS_URL"), nil)
+		if err != nil {
+			return err
+		}
+		res, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		if res.StatusCode != 200 {
+			return http.ErrServerClosed
+		}
+		return nil
+	})
+	r.GET("/api/auth/userinfo", security.Require(), func(c *gin.Context) { c.JSON(200, platform.Principal(c)) })
+	return r
+}
+func main() {
 	port := os.Getenv("SERVICE_PORT")
 	if port == "" {
 		port = "8080"
 	}
-	addr := ":" + port
-	log.Printf("✅ rac-auth-service iniciado en %s (modo: %s)", addr, gin.Mode())
-
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("❌ Error iniciando servidor: %v", err)
-	}
+	log.Fatal(router(platform.FromEnvironment()).Run(":" + port))
 }
